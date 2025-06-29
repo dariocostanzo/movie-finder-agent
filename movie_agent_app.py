@@ -1,6 +1,6 @@
-
 import streamlit as st
 from justwatch import JustWatch
+import requests
 
 # Platform map to JustWatch internal provider names
 PLATFORMS = {
@@ -34,33 +34,39 @@ content_type = st.radio("🎞️ Content type", ['movie', 'show'], index=0)
 # Button
 if st.button("🔍 Find Titles"):
     st.info("Searching JustWatch…")
-    justwatch = JustWatch(country=country)
+    try:
+        justwatch = JustWatch(country=country)
+        provider_ids = [PLATFORMS[p] for p in platforms]
+        content = 'show' if content_type == 'show' else 'movie'
 
-    provider_ids = [PLATFORMS[p] for p in platforms]
-    content = 'show' if content_type == 'show' else 'movie'
+        results = justwatch.search_for_item(
+            content_types=[content],
+            genres=[genre],
+            providers=provider_ids,
+            monetization_types=['flatrate'],
+            scoring_filter={'tmdb:score': min_rating / 10}
+        )
 
-    results = justwatch.search_for_item(
-        content_types=[content],
-        genres=[genre],
-        providers=provider_ids,
-        monetization_types=['flatrate'],
-        scoring_filter={'tmdb:score': min_rating / 10}
-    )
+        items = results.get('items', [])
 
-    items = results.get('items', [])
+        if not items:
+            st.warning("No matching titles found.")
+        else:
+            for item in items[:10]:
+                title = item.get('title')
+                year = item.get('original_release_year', '')
+                url = f"https://www.justwatch.com{item['full_path']}"
+                score = item.get('scoring', [{}])[0].get('value', '?')
+                img_url = f"https://images.justwatch.com{item['poster'].get('url')}.sxs" if item.get('poster') else None
 
-    if not items:
-        st.warning("No matching titles found.")
-    else:
-        for item in items[:10]:
-            title = item.get('title')
-            year = item.get('original_release_year', '')
-            url = f"https://www.justwatch.com{item['full_path']}"
-            score = item.get('scoring', [{}])[0].get('value', '?')
-            img_url = f"https://images.justwatch.com{item['poster'].get('url')}.sxs" if item.get('poster') else None
-
-            st.markdown(f"### [{title} ({year})]({url})")
-            if img_url:
-                st.image(img_url, width=150)
-            st.markdown(f"⭐ **TMDB**: {round(score * 10, 1)}/100")
-            st.markdown("---")
+                st.markdown(f"### [{title} ({year})]({url})")
+                if img_url:
+                    st.image(img_url, width=150)
+                st.markdown(f"⭐ **TMDB**: {round(score * 10, 1)}/100")
+                st.markdown("---")
+    except requests.exceptions.HTTPError as http_err:
+        st.error("⚠️ Unable to fetch data from JustWatch. The service might be blocking this request.")
+        st.text(str(http_err))
+    except Exception as e:
+        st.error("⚠️ Something went wrong while fetching titles.")
+        st.text(str(e))
